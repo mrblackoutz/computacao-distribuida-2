@@ -1,0 +1,91 @@
+services:
+  coordenador:
+    build:
+      context: ./servico-coordenador
+      dockerfile: Dockerfile
+    container_name: sctec-coordenador
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    networks:
+      - sctec-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  agendamento:
+    build:
+      context: ./servico-agendamento
+      dockerfile: Dockerfile
+    container_name: sctec-agendamento
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:-chave-super-secreta-trocar-em-producao}
+      - DATABASE_URI=sqlite:///instance/telescopio.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - COORDENADOR_URL=http://coordenador:3000
+      - NOME_TELESCOPIO=Hubble-Acad
+      - DURACAO_MINIMA_MINUTOS=5
+      - DURACAO_MAXIMA_MINUTOS=120
+      - ANTECEDENCIA_MINIMA_HORAS=24
+      - MAX_AGENDAMENTOS_ATIVOS_POR_CIENTISTA=3
+      # Configurações adicionais de timeout
+      - DB_TIMEOUT=30
+      - REQUEST_TIMEOUT=60
+      # Toggle entre versão COM lock (true) e SEM lock (false)
+      # true = Entrega 3 (Produção) | false = Entrega 2 (Demonstração do problema)
+      - USE_LOCK=${USE_LOCK:-true}
+    volumes:
+      - agendamento-db:/app/instance
+      - agendamento-logs:/app/logs
+    networks:
+      - sctec-network
+    depends_on:
+      coordenador:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/time"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  sctec-network:
+    driver: bridge
+    name: sctec-network
+
+volumes:
+  agendamento-db:
+    name: sctec-agendamento-db
+    driver: local
+  agendamento-logs:
+    name: sctec-agendamento-logs
+    driver: local

@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCTEC - Sistema de Controle de Telescópio Espacial Compartilhado</title>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .sync-status {
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+        
+        .sync-status h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .time-display {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .time-box {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 5px solid #667eea;
+            transition: transform 0.2s;
+        }
+        
+        .time-box:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .time-box label {
+            display: block;
+            color: #666;
+            font-size: 0.85em;
+            margin-bottom: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .time-box .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .sync-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            font-weight: 600;
+        }
+        
+        .sync-indicator.synced {
+            background: #d4edda;
+            color: #155724;
+            border-left: 5px solid #28a745;
+        }
+        
+        .sync-indicator.syncing {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 5px solid #ffc107;
+        }
+        
+        .sync-indicator.error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 5px solid #dc3545;
+        }
+        
+        .sync-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .sync-indicator.synced .sync-dot {
+            background: #28a745;
+        }
+        
+        .sync-indicator.syncing .sync-dot {
+            background: #ffc107;
+        }
+        
+        .sync-indicator.error .sync-dot {
+            background: #dc3545;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.9); }
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+        
+        .card h2 {
+            color: #333;
+            margin-bottom: 25px;
+            font-size: 1.6em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .form-group input.invalid,
+        .form-group select.invalid,
+        .form-group textarea.invalid {
+            border-color: #dc3545;
+            background-color: #fff5f5;
+        }
+        
+        .form-group input.valid,
+        .form-group select.valid,
+        .form-group textarea.valid {
+            border-color: #28a745;
+        }
+        
+        .field-error {
+            color: #dc3545;
+            font-size: 0.85em;
+            margin-top: 5px;
+            display: none;
+        }
+        
+        .field-error.show {
+            display: block;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 90px;
+        }
+        
+        .btn {
+            padding: 14px 32px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(220, 53, 69, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .agendamento-item {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 5px solid #667eea;
+            transition: transform 0.2s;
+        }
+        
+        .agendamento-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .agendamento-item.cancelado {
+            border-left-color: #dc3545;
+            opacity: 0.8;
+        }
+        
+        .agendamento-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 12px;
+        }
+        
+        .agendamento-title {
+            font-weight: 700;
+            color: #333;
+            font-size: 1.15em;
+        }
+        
+        .agendamento-status {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .agendamento-status.agendado {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .agendamento-status.cancelado {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .agendamento-status.concluido {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .agendamento-details {
+            color: #666;
+            font-size: 0.95em;
+            margin-bottom: 12px;
+        }
+        
+        .agendamento-details div {
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .agendamento-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        
+        .btn-small {
+            padding: 8px 18px;
+            font-size: 0.9em;
+        }
+        
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+            font-weight: 500;
+        }
+        
+        .alert.show {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+            border-left: 5px solid #28a745;
+        }
+        
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+            border-left: 5px solid #dc3545;
+        }
+        
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 2px solid #ffeaa7;
+            border-left: 5px solid #ffc107;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: #999;
+        }
+        
+        .empty-state .icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+            opacity: 0.3;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-box .value {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-box .label {
+            font-size: 0.85em;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔭 SCTEC</h1>
+            <p>Sistema de Controle de Telescópio Espacial Compartilhado</p>
+        </div>
+        
+        <!-- Sync Status -->
+        <div class="sync-status">
+            <h2>⏰ Sincronização de Tempo (Algoritmo de Cristian)</h2>
+            <div class="time-display">
+                <div class="time-box">
+                    <label>Hora Local do Navegador</label>
+                    <div class="value" id="local-time">--:--:--</div>
+                </div>
+                <div class="time-box">
+                    <label>Hora do Servidor (UTC)</label>
+                    <div class="value" id="server-time">--:--:--</div>
+                </div>
+                <div class="time-box">
+                    <label>Offset de Tempo (ms)</label>
+                    <div class="value" id="time-diff">--</div>
+                </div>
+                <div class="time-box">
+                    <label>Latência de Rede RTT (ms)</label>
+                    <div class="value" id="network-latency">--</div>
+                </div>
+            </div>
+            <div class="sync-indicator syncing" id="sync-indicator">
+                <div class="sync-dot"></div>
+                <span id="sync-message">Sincronizando com servidor...</span>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Formulário de Agendamento -->
+            <div class="card">
+                <h2>📅 Novo Agendamento</h2>
+                
+                <div class="alert alert-success" id="success-alert"></div>
+                <div class="alert alert-danger" id="error-alert"></div>
+                
+                <form id="agendamento-form">
+                    <div class="form-group">
+                        <label for="cientista">Cientista *</label>
+                        <select id="cientista" required>
+                            <option value="">Carregando cientistas...</option>
+                        </select>
+                        <div class="field-error" id="error-cientista"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="horario_inicio">Horário de Início (UTC) *</label>
+                        <input type="datetime-local" id="horario_inicio" step="300" required>
+                        <div class="field-error" id="error-horario_inicio"></div>
+                        <small style="color: #666; font-size: 0.85em; margin-top: 5px; display: block;">
+                            Horários devem ser múltiplos de 5 minutos (ex: 14:00, 14:05, 14:10...)
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="duracao">Duração *</label>
+                        <select id="duracao" required>
+                            <option value="5">5 minutos</option>
+                            <option value="10">10 minutos</option>
+                            <option value="15">15 minutos</option>
+                            <option value="30" selected>30 minutos</option>
+                            <option value="45">45 minutos</option>
+                            <option value="60">60 minutos (1 hora)</option>
+                            <option value="90">90 minutos (1.5 horas)</option>
+                            <option value="120">120 minutos (2 horas)</option>
+                        </select>
+                        <div class="field-error" id="error-duracao"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="objeto_celeste">Objeto Celeste *</label>
+                        <input 
+                            type="text" 
+                            id="objeto_celeste" 
+                            placeholder="Ex: NGC 1300, Andrômeda M31, Nebulosa de Órion" 
+                            required
+                        >
+                        <div class="field-error" id="error-objeto_celeste"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="observacoes">Observações</label>
+                        <textarea 
+                            id="observacoes" 
+                            placeholder="Descreva o objetivo científico da observação..."
+                        ></textarea>
+                        <div class="field-error" id="error-observacoes"></div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="submit-btn">
+                        📡 Agendar Observação
+                    </button>
+                </form>
+            </div>
+            
+            <!-- Lista de Agendamentos -->
+            <div class="card">
+                <h2>📋 Meus Agendamentos</h2>
+                
+                <div class="stats" id="stats-container" style="display: none;">
+                    <div class="stat-box">
+                        <div class="value" id="stat-total">0</div>
+                        <div class="label">Total</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="value" id="stat-agendados">0</div>
+                        <div class="label">Agendados</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="value" id="stat-concluidos">0</div>
+                        <div class="label">Concluídos</div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-warning" id="cancel-alert"></div>
+                
+                <div id="agendamentos-container">
+                    <div class="loading">⏳ Carregando agendamentos...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Zod PRECISA carregar ANTES do nosso script -->
+    <script src="https://cdn.jsdelivr.net/npm/zod/lib/index.umd.js" crossorigin="anonymous"></script>
+    
+    <script>
+        // Aguardar Zod carregar (máximo 2 segundos)
+        async function aguardarZod() {
+            for (let i = 0; i < 20; i++) {
+                // Zod UMD expõe window.Zod.z
+                if (typeof window.Zod !== 'undefined' && typeof window.Zod.z !== 'undefined') {
+                    console.log('[ZOD] Carregado com sucesso!');
+                    return true;
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            console.warn('[ZOD] Timeout ao carregar. Continuando sem Zod.');
+            return false;
+        }
+        
+        // ===== CONFIGURAÇÃO =====
+        const API_BASE = '/api/v1';
+        
+        // ===== VALIDAÇÃO COM ZOD =====
+        // Inicialmente, verificar se Zod está disponível
+        let zodDisponivel = typeof window.Zod !== 'undefined' && typeof window.Zod.z !== 'undefined';
+        let z = zodDisponivel ? window.Zod.z : null;
+        let agendamentoSchema = null;
+        
+        // Função para criar o schema (será chamada após Zod carregar)
+        function criarSchemaValidacao() {
+            if (typeof window.Zod === 'undefined' || typeof window.Zod.z === 'undefined') {
+                console.warn('[ZOD] window.Zod.z não está definido');
+                return null;
+            }
+            
+            const z = window.Zod.z;
+            
+            return z.object({
+            cientista_id: z.number({
+                required_error: "Cientista é obrigatório",
+                invalid_type_error: "Cientista inválido"
+            }).int("Cientista deve ser um número inteiro").positive("Cientista inválido"),
+            
+            // Usar datetime() nativo do Zod - aceita formato local (sem timezone)
+            // Formato esperado: "2025-11-14T15:00:00" (datetime-local do HTML5)
+            horario_inicio: z.string({
+                required_error: "Horário de início é obrigatório"
+            }).min(1, "Horário de início é obrigatório")
+              .datetime({ 
+                  local: true,  // Permite datetimes sem timezone (formato do input datetime-local)
+                  message: "Formato de data/hora inválido ou fora do limite permitido. Tente usar o seletor de data."
+              }).refine((val) => new Date(val) > new Date(), { message: "A data deve ser futura." }),
+            
+            duracao: z.coerce.number({
+                required_error: "Duração é obrigatória",
+                invalid_type_error: "Duração inválida"
+            }).int("Duração deve ser um número inteiro")
+              .min(5, "Duração mínima: 5 minutos")
+              .max(120, "Duração máxima: 120 minutos")
+              .refine(val => val % 5 === 0, {
+                  message: "Duração deve ser múltiplo de 5 minutos"
+              }),
+            
+            objeto_celeste: z.string({
+                required_error: "Objeto celeste é obrigatório"
+            }).min(3, "Nome do objeto celeste deve ter pelo menos 3 caracteres")
+              .max(300, "Nome muito longo (máximo 300 caracteres)"),
+            
+            observacoes: z.string().max(1000, "Observações muito longas (máximo 1000 caracteres)").optional()
+        }).refine(data => {
+            // Validar antecedência mínima de 24h
+            const dataInicio = new Date(data.horario_inicio);
+            const agora = getTempoSincronizado();
+            const diferencaHoras = (dataInicio - agora) / (1000 * 60 * 60);
+            
+            return diferencaHoras >= 24;
+        }, {
+            message: "Agendamento deve ser feito com antecedência mínima de 24 horas",
+            path: ["horario_inicio"]
+        });
+        }
+        
+        // ===== ESTADO DA APLICAÇÃO =====
+        let cientistas = [];
+        let agendamentos = [];
+        let cientistaAtualId = null;
+        let offsetTempo = 0;  // Diferença servidor-cliente em ms
+        let latenciaRede = 0; // RTT (Round-Trip Time)
+        let ultimaSincronizacao = null;
+        
+        // ===== SINCRONIZAÇÃO DE TEMPO (Algoritmo de Cristian) =====
+        
+        async function sincronizarTempo() {
+            try {
+                // t0: momento antes da requisição
+                const t0 = Date.now();
+                
+                const response = await fetch(`${API_BASE}/time`);
+                
+                // t1: momento após receber resposta
+                const t1 = Date.now();
+                
+                if (!response.ok) {
+                    throw new Error('Falha ao sincronizar tempo');
+                }
+                
+                const data = await response.json();
+                const tempoServidor = new Date(data.timestamp_utc).getTime();
+                
+                // RTT (Round-Trip Time): tempo total da requisição
+                const rtt = t1 - t0;
+                latenciaRede = rtt;
+                
+                // Algoritmo de Cristian:
+                // Assumimos que latência de ida = latência de volta = RTT/2
+                const latenciaEstimada = rtt / 2;
+                
+                // Tempo do servidor ajustado pela latência
+                const tempoServidorAjustado = tempoServidor + latenciaEstimada;
+                
+                // Calcular offset (diferença entre servidor e cliente)
+                offsetTempo = tempoServidorAjustado - t1;
+                
+                ultimaSincronizacao = Date.now();
+                
+                atualizarIndicadorSync('synced', 
+                    `Sincronizado! Offset: ${offsetTempo >= 0 ? '+' : ''}${offsetTempo}ms | RTT: ${rtt}ms`);
+                
+                console.log('[SYNC] Sincronização concluída:', {
+                    offset: offsetTempo,
+                    rtt: rtt,
+                    latenciaEstimada: latenciaEstimada
+                });
+                
+            } catch (error) {
+                console.error('[SYNC] Erro na sincronização:', error);
+                atualizarIndicadorSync('error', 'Erro na sincronização de tempo');
+            }
+        }
+        
+        function getTempoSincronizado() {
+            // Retorna o tempo atual ajustado pelo offset do servidor
+            return new Date(Date.now() + offsetTempo);
+        }
+        
+        function formatarDataParaAPI(date) {
+            // Verificar se a data é válida antes de formatar
+            if (!date || isNaN(date.getTime())) {
+                console.error('[FORMAT] Data inválida recebida:', date);
+                throw new Error('Data inválida para formatação');
+            }
+            // Formato ISO8601 UTC
+            return date.toISOString();
+        }
+        
+        function atualizarIndicadorSync(status, mensagem) {
+            const indicator = document.getElementById('sync-indicator');
+            const message = document.getElementById('sync-message');
+            
+            indicator.className = `sync-indicator ${status}`;
+            message.textContent = mensagem;
+        }
+        
+        // Atualizar displays de tempo em tempo real
+        function atualizarDisplaysTempo() {
+            const agoraLocal = new Date();
+            const agoraSincronizado = getTempoSincronizado();
+            
+            // Hora local
+            document.getElementById('local-time').textContent = 
+                agoraLocal.toLocaleTimeString('pt-BR');
+            
+            // Hora do servidor (UTC)
+            document.getElementById('server-time').textContent = 
+                agoraSincronizado.toISOString().substr(11, 8);
+            
+            // Offset
+            const offsetDisplay = offsetTempo >= 0 ? `+${offsetTempo}` : `${offsetTempo}`;
+            document.getElementById('time-diff').textContent = offsetDisplay;
+            
+            // Latência
+            document.getElementById('network-latency').textContent = 
+                Math.round(latenciaRede);
+        }
+        
+        // ===== OPERAÇÕES DA API =====
+        
+        async function carregarCientistas() {
+            try {
+                const response = await fetch(`${API_BASE}/cientistas`);
+                const data = await response.json();
+                
+                cientistas = data.cientistas;
+                
+                const select = document.getElementById('cientista');
+                select.innerHTML = '<option value="">Selecione um cientista</option>';
+                
+                cientistas.forEach(c => {
+                    const option = document.createElement('option');
+                    option.value = c.id;
+                    option.textContent = `${c.nome} - ${c.instituicao}`;
+                    select.appendChild(option);
+                });
+                
+                // Selecionar o primeiro automaticamente
+                if (cientistas.length > 0) {
+                    cientistaAtualId = cientistas[0].id;
+                    select.value = cientistaAtualId;
+                    carregarAgendamentos(cientistaAtualId);
+                }
+                
+            } catch (error) {
+                console.error('[API] Erro ao carregar cientistas:', error);
+                mostrarAlerta('error', 'Erro ao carregar lista de cientistas');
+            }
+        }
+        
+        async function carregarAgendamentos(cientistaId) {
+            try {
+                const container = document.getElementById('agendamentos-container');
+                container.innerHTML = '<div class="loading">⏳ Carregando agendamentos...</div>';
+                
+                const response = await fetch(`${API_BASE}/cientistas/${cientistaId}/agendamentos`);
+                const data = await response.json();
+                
+                agendamentos = data.agendamentos;
+                renderizarAgendamentos();
+                atualizarEstatisticas();
+                
+            } catch (error) {
+                console.error('[API] Erro ao carregar agendamentos:', error);
+                document.getElementById('agendamentos-container').innerHTML = 
+                    '<div class="empty-state"><div class="icon">⚠️</div><p>Erro ao carregar agendamentos</p></div>';
+            }
+        }
+        
+        function atualizarEstatisticas() {
+            const total = agendamentos.length;
+            const agendados = agendamentos.filter(a => a.status === 'AGENDADO').length;
+            const concluidos = agendamentos.filter(a => a.status === 'CONCLUIDO').length;
+            
+            document.getElementById('stat-total').textContent = total;
+            document.getElementById('stat-agendados').textContent = agendados;
+            document.getElementById('stat-concluidos').textContent = concluidos;
+            
+            if (total > 0) {
+                document.getElementById('stats-container').style.display = 'grid';
+            }
+        }
+        
+        function renderizarAgendamentos() {
+            const container = document.getElementById('agendamentos-container');
+            
+            if (agendamentos.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">🔭</div>
+                        <p>Nenhum agendamento encontrado</p>
+                        <p style="font-size: 0.9em; margin-top: 10px;">Crie seu primeiro agendamento usando o formulário ao lado</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Ordenar por data (mais recentes primeiro)
+            const agendamentosOrdenados = [...agendamentos].sort((a, b) => 
+                new Date(b.horario_inicio_utc) - new Date(a.horario_inicio_utc)
+            );
+            
+            container.innerHTML = agendamentosOrdenados
+                .map(ag => criarCardAgendamento(ag))
+                .join('');
+        }
+        
+        function criarCardAgendamento(ag) {
+            const inicio = new Date(ag.horario_inicio_utc);
+            const fim = new Date(ag.horario_fim_utc);
+            const duracao = Math.round((fim - inicio) / 60000);
+            
+            const podeCancelar = ag.status === 'AGENDADO' && ag._links && ag._links.cancelar;
+            
+            const dataFormatada = inicio.toLocaleString('pt-BR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'UTC',
+                timeZoneName: 'short'
+            });
+            
+            return `
+                <div class="agendamento-item ${ag.status.toLowerCase()}">
+                    <div class="agendamento-header">
+                        <div class="agendamento-title">${ag.objeto_celeste}</div>
+                        <div class="agendamento-status ${ag.status.toLowerCase()}">${ag.status}</div>
+                    </div>
+                    <div class="agendamento-details">
+                        <div>📅 ${dataFormatada}</div>
+                        <div>⏱ Duração: ${duracao} minutos</div>
+                        ${ag.observacoes ? `<div>📝 ${ag.observacoes}</div>` : ''}
+                        ${ag.motivo_cancelamento ? `<div>❌ Motivo: ${ag.motivo_cancelamento}</div>` : ''}
+                    </div>
+                    ${podeCancelar ? `
+                        <div class="agendamento-actions">
+                            <button class="btn btn-danger btn-small" onclick="cancelarAgendamento(${ag.id})">
+                                🗑 Cancelar Agendamento
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        async function cancelarAgendamento(id) {
+            if (!confirm('⚠️ Tem certeza que deseja cancelar este agendamento?')) {
+                return;
+            }
+            
+            const motivo = prompt('Motivo do cancelamento (opcional):');
+            
+            try {
+                const response = await fetch(`${API_BASE}/agendamentos/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        motivo: motivo || 'Cancelado pelo usuário via interface web'
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Erro ao cancelar');
+                }
+                
+                mostrarAlertaTemporario('cancel', '✅ Agendamento cancelado com sucesso!', 'warning');
+                carregarAgendamentos(cientistaAtualId);
+                
+            } catch (error) {
+                console.error('[API] Erro ao cancelar:', error);
+                mostrarAlertaTemporario('cancel', `❌ Erro: ${error.message}`, 'danger');
+            }
+        }
+        
+        // ===== FORMULÁRIO DE AGENDAMENTO =====
+        
+        document.getElementById('agendamento-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Agendando...';
+            
+            try {
+                // Obter valores do formulário
+                const cientistaId = parseInt(document.getElementById('cientista').value);
+                const horarioInicio = document.getElementById('horario_inicio').value;
+                const duracao = parseInt(document.getElementById('duracao').value);
+                const objetoCeleste = document.getElementById('objeto_celeste').value;
+                const observacoes = document.getElementById('observacoes').value;
+                
+                // Validar campos obrigatórios antes de processar
+                if (!cientistaId || isNaN(cientistaId)) {
+                    throw new Error('Selecione um cientista');
+                }
+                
+                if (!horarioInicio || horarioInicio.trim() === '') {
+                    throw new Error('Informe o horário de início');
+                }
+                
+                if (!duracao || isNaN(duracao)) {
+                    throw new Error('Selecione a duração');
+                }
+                
+                if (!objetoCeleste || objetoCeleste.trim() === '') {
+                    throw new Error('Informe o objeto celeste');
+                }
+                
+                // ===== VALIDAÇÃO COM ZOD (se disponível) =====
+                if (zodDisponivel && agendamentoSchema) {
+                    const dadosFormulario = {
+                        cientista_id: cientistaId,
+                        horario_inicio: horarioInicio,
+                        duracao: duracao,
+                        objeto_celeste: objetoCeleste,
+                        observacoes: observacoes || undefined
+                    };
+                    
+                    // Validar com Zod
+                    try {
+                        agendamentoSchema.parse(dadosFormulario);
+                        limparTodosErros(); // Limpar erros anteriores se validação passou
+                    } catch (validationError) {
+                        if (validationError.name === 'ZodError') {
+                            // Mostrar erros individuais em cada campo
+                            limparTodosErros();
+                            
+                            validationError.errors.forEach(err => {
+                                const campo = err.path[0];
+                                mostrarErroNoCampo(campo, err.message);
+                            });
+                            
+                            // Também mostrar alerta geral
+                            const primeiroErro = validationError.errors[0].message;
+                            throw new Error(primeiroErro);
+                        }
+                        throw validationError;
+                    }
+                } else {
+                    console.warn('[FORM] Zod não disponível, validação básica apenas');
+                }
+                
+                // Converter horário local para UTC sincronizado
+                console.log('[DEBUG] horarioInicio string:', horarioInicio);
+                const dataInicio = new Date(horarioInicio);
+                console.log('[DEBUG] dataInicio objeto:', dataInicio);
+                console.log('[DEBUG] dataInicio.getTime():', dataInicio.getTime());
+                
+                // Verificar se a data é válida
+                if (isNaN(dataInicio.getTime())) {
+                    console.error('[FORM] Data inválida! horarioInicio era:', horarioInicio);
+                    throw new Error('Horário de início inválido');
+                }
+                
+                const dataFim = new Date(dataInicio.getTime() + duracao * 60000);
+                console.log('[DEBUG] dataFim:', dataFim);
+                
+                // Preparar dados
+                const dados = {
+                    cientista_id: cientistaId,
+                    horario_inicio_utc: formatarDataParaAPI(dataInicio),
+                    horario_fim_utc: formatarDataParaAPI(dataFim),
+                    objeto_celeste: objetoCeleste.trim(),
+                    observacoes: observacoes.trim() || null
+                };
+                
+                console.log('[FORM] Enviando agendamento:', dados);
+                
+                // Enviar requisição
+                const response = await fetch(`${API_BASE}/agendamentos`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(dados)
+                });
+                
+                // Verificar se a resposta é JSON antes de parsear
+                const contentType = response.headers.get('content-type');
+                console.log('[FORM] Response status:', response.status);
+                console.log('[FORM] Response content-type:', contentType);
+                
+                let resultado;
+                if (contentType && contentType.includes('application/json')) {
+                    resultado = await response.json();
+                } else {
+                    // Resposta não é JSON (provavelmente HTML de erro)
+                    const textoResposta = await response.text();
+                    console.error('[FORM] Resposta não-JSON recebida:', textoResposta.substring(0, 500));
+                    throw new Error(`Erro no servidor (${response.status}). Veja o console para detalhes.`);
+                }
+                
+                if (!response.ok) {
+                    // Se houver detalhes, mostrar todos
+                    if (resultado.details && Array.isArray(resultado.details)) {
+                        console.error('[FORM] Detalhes da validação:', resultado.details);
+                        throw new Error(`${resultado.error}: ${resultado.details.join(', ')}`);
+                    }
+                    throw new Error(resultado.error || 'Erro ao criar agendamento');
+                }
+                
+                // Sucesso!
+                mostrarAlerta('success', '✅ Agendamento criado com sucesso!');
+                document.getElementById('agendamento-form').reset();
+                document.getElementById('cientista').value = cientistaId;
+                carregarAgendamentos(cientistaId);
+                
+            } catch (error) {
+                console.error('[FORM] Erro ao agendar:', error);
+                mostrarAlerta('error', `❌ ${error.message}`);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '📡 Agendar Observação';
+            }
+        });
+        
+        function mostrarAlerta(tipo, mensagem) {
+            const alertaId = tipo === 'success' ? 'success-alert' : 'error-alert';
+            const alerta = document.getElementById(alertaId);
+            
+            // Esconder todos os alertas primeiro
+            document.querySelectorAll('.alert').forEach(a => a.classList.remove('show'));
+            
+            alerta.textContent = mensagem;
+            alerta.classList.add('show');
+            
+            setTimeout(() => {
+                alerta.classList.remove('show');
+            }, 5000);
+        }
+        
+        function mostrarAlertaTemporario(id, mensagem, tipo) {
+            const alerta = document.getElementById(`${id}-alert`);
+            alerta.className = `alert alert-${tipo} show`;
+            alerta.textContent = mensagem;
+            
+            setTimeout(() => {
+                alerta.classList.remove('show');
+            }, 5000);
+        }
+        
+        // ===== VALIDAÇÃO VISUAL DE CAMPOS =====
+        
+        function mostrarErroNoCampo(campo, mensagem) {
+            const input = document.getElementById(campo);
+            const errorDiv = document.getElementById(`error-${campo}`);
+            
+            if (input && errorDiv) {
+                input.classList.add('invalid');
+                input.classList.remove('valid');
+                errorDiv.textContent = mensagem;
+                errorDiv.classList.add('show');
+            }
+        }
+        
+        function limparErroDoCampo(campo) {
+            const input = document.getElementById(campo);
+            const errorDiv = document.getElementById(`error-${campo}`);
+            
+            if (input && errorDiv) {
+                input.classList.remove('invalid');
+                input.classList.add('valid');
+                errorDiv.classList.remove('show');
+            }
+        }
+        
+        function limparTodosErros() {
+            const campos = ['cientista', 'horario_inicio', 'duracao', 'objeto_celeste', 'observacoes'];
+            campos.forEach(campo => {
+                const input = document.getElementById(campo);
+                const errorDiv = document.getElementById(`error-${campo}`);
+                
+                if (input) {
+                    input.classList.remove('invalid', 'valid');
+                }
+                if (errorDiv) {
+                    errorDiv.classList.remove('show');
+                }
+            });
+        }
+        
+        // Validação em tempo real ao mudar os campos
+        function configurarValidacaoEmTempoReal() {
+            // Validar objeto celeste ao digitar
+            document.getElementById('objeto_celeste').addEventListener('blur', () => {
+                const valor = document.getElementById('objeto_celeste').value.trim();
+                
+                if (valor.length === 0) {
+                    mostrarErroNoCampo('objeto_celeste', 'Objeto celeste é obrigatório');
+                } else if (valor.length < 3) {
+                    mostrarErroNoCampo('objeto_celeste', 'Nome muito curto (mínimo 3 caracteres)');
+                } else if (valor.length > 300) {
+                    mostrarErroNoCampo('objeto_celeste', 'Nome muito longo (máximo 300 caracteres)');
+                } else {
+                    limparErroDoCampo('objeto_celeste');
+                }
+            });
+            
+            // Validar horário ao mudar
+            document.getElementById('horario_inicio').addEventListener('change', () => {
+                const horarioInicio = document.getElementById('horario_inicio').value;
+                
+                if (!horarioInicio) {
+                    mostrarErroNoCampo('horario_inicio', 'Horário é obrigatório');
+                    return;
+                }
+                
+                const dataInicio = new Date(horarioInicio);
+                const agora = getTempoSincronizado();
+                const diferencaHoras = (dataInicio - agora) / (1000 * 60 * 60);
+                
+                if (diferencaHoras < 0) {
+                    mostrarErroNoCampo('horario_inicio', 'Não é possível agendar no passado');
+                } else if (diferencaHoras < 24) {
+                    mostrarErroNoCampo('horario_inicio', 'Antecedência mínima de 24 horas');
+                } else {
+                    limparErroDoCampo('horario_inicio');
+                }
+            });
+            
+            // Validar observações ao digitar
+            document.getElementById('observacoes').addEventListener('input', (e) => {
+                const valor = e.target.value;
+                
+                if (valor.length > 1000) {
+                    mostrarErroNoCampo('observacoes', `${valor.length}/1000 caracteres (máximo excedido)`);
+                } else if (valor.length > 0) {
+                    limparErroDoCampo('observacoes');
+                }
+            });
+        }
+        
+        // ===== INICIALIZAÇÃO =====
+        
+        // Quando o cientista muda, recarregar agendamentos
+        document.getElementById('cientista').addEventListener('change', (e) => {
+            cientistaAtualId = parseInt(e.target.value);
+            if (cientistaAtualId) {
+                carregarAgendamentos(cientistaAtualId);
+            }
+        });
+        
+        // Inicializar quando a página carregar
+        window.addEventListener('load', async () => {
+            console.log('[INIT] Iniciando aplicação...');
+            
+            // Aguardar Zod carregar
+            const zodCarregou = await aguardarZod();
+            
+            // Reconfigurar zodDisponivel e criar schema após aguardar
+            zodDisponivel = typeof window.Zod !== 'undefined' && typeof window.Zod.z !== 'undefined';
+            console.log('[INIT] Zod disponível:', zodDisponivel);
+            
+            if (zodDisponivel) {
+                z = window.Zod.z;
+                agendamentoSchema = criarSchemaValidacao();
+                console.log('[INIT] Schema de validação criado:', agendamentoSchema !== null);
+            }
+            
+            // Sincronizar tempo primeiro
+            atualizarIndicadorSync('syncing', 'Sincronizando com servidor...');
+            await sincronizarTempo();
+            
+            // Atualizar displays a cada segundo
+            setInterval(atualizarDisplaysTempo, 1000);
+            atualizarDisplaysTempo();
+            
+            // Ressincronizar a cada 30 segundos
+            setInterval(sincronizarTempo, 30000);
+            
+            // Configurar validação em tempo real
+            configurarValidacaoEmTempoReal();
+            
+            // Carregar dados da API
+            await carregarCientistas();
+            
+            console.log('[INIT] Aplicação iniciada com sucesso!');
+            if (zodCarregou) {
+                console.log('[INIT] ✓ Validação Zod ativada para formulário');
+            } else {
+                console.warn('[INIT] ⚠ Zod não carregado, usando validação básica');
+            }
+        });
+    </script>
+</body>
+</html>
