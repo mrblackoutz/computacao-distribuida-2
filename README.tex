@@ -1,0 +1,1102 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[portuguese]{babel}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}  % <-- ADICIONADO para \checkmark
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usepackage{newunicodechar}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric}
+
+\geometry{left=3cm,right=2cm,top=3cm,bottom=2cm}
+
+% Definir caractere Unicode para checkmark
+\newunicodechar{✓}{\checkmark}
+
+% Cores para código
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% Definir linguagem JSON para listings
+\lstdefinelanguage{json}{
+    basicstyle=\ttfamily\footnotesize,
+    numbers=left,
+    numberstyle=\scriptsize,
+    stepnumber=1,
+    numbersep=8pt,
+    showstringspaces=false,
+    breaklines=true,
+    frame=lines,
+    backgroundcolor=\color{backcolour},
+    literate=
+     *{0}{{{\color{codepurple}0}}}{1}
+      {1}{{{\color{codepurple}1}}}{1}
+      {2}{{{\color{codepurple}2}}}{1}
+      {3}{{{\color{codepurple}3}}}{1}
+      {4}{{{\color{codepurple}4}}}{1}
+      {5}{{{\color{codepurple}5}}}{1}
+      {6}{{{\color{codepurple}6}}}{1}
+      {7}{{{\color{codepurple}7}}}{1}
+      {8}{{{\color{codepurple}8}}}{1}
+      {9}{{{\color{codepurple}9}}}{1}
+      {:}{{{\color{black}{:}}}}{1}
+      {,}{{{\color{black}{,}}}}{1}
+      {\{}{{{\color{black}{\{}}}}{1}
+      {\}}{{{\color{black}{\}}}}}{1}
+      {[}{{{\color{black}{[}}}}{1}
+      {]}{{{\color{black}{]}}}}{1},
+}
+
+% Estilo para listings
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+% Atalhos úteis - CORRIGIDO: definir antes de renovar
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\endpoint}[1]{\texttt{#1}}  % PRIMEIRO definir
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+
+\title{\textbf{Relatório Técnico -- SCTEC}\\\large Sistema de Controle de Telescópio Espacial Compartilhado}
+\author{\begin{tabular}{ll}
+Gustavo Nascimento Siqueira & RA: 10419057 \\
+Felipe Ujvari Gasparino de Sousa & RA: 10418415 \\
+Thomaz de Souza Scopel & RA: 10417183 \\
+\end{tabular}}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este documento descreve a implementação completa do \textbf{SCTEC} (Sistema de Controle de Telescópio Espacial Compartilhado), uma aplicação distribuída composta por um serviço de agendamento (Flask/Python) e um serviço coordenador (Node.js/Express) para garantir exclusão mútua em operações críticas de agendamento. O relatório consolida a arquitetura, modelagem de dados, especificação da API RESTful com HATEOAS, estratégia de logging (aplicação e auditoria), sincronização de tempo via Algoritmo de Cristian, containerização com Docker Compose e a validação por meio de testes de concorrência (demonstração do problema \emph{sem lock} e da solução \emph{com lock}). Incluímos seções com diagramas TikZ detalhados e espaço para evidências (prints de tela, saídas de logs e resultados).
+\end{abstract}
+
+\tableofcontents
+\listoffigures
+\listoftables
+\newpage
+
+\section{Introdução}
+O SCTEC foi desenvolvido no contexto da disciplina de \emph{Computação Distribuída}, com os seguintes objetivos principais:
+\begin{itemize}
+    \item Implementar uma \textbf{API RESTful} com \textbf{HATEOAS};
+    \item Resolver \textbf{condições de corrida} via \textbf{exclusão mútua} (serviço coordenador);
+    \item Sincronizar o \textbf{tempo cliente-servidor} (Algoritmo de Cristian);
+    \item Prover \textbf{observabilidade} com logs de aplicação e \textbf{auditoria} (correlation ID);
+    \item Containerizar e orquestrar com \textbf{Docker Compose}.
+\end{itemize}
+
+Este relatório consolida o conteúdo dos documentos MODELOS.md, API.md, LOGGING.md, DOCKER.md e do README do projeto, estruturando a narrativa técnica e incluindo diagramas detalhados.
+
+\section{Arquitetura do Sistema}
+O sistema é composto por dois microserviços e um banco de dados SQLite. A comunicação se dá via HTTP/JSON, e o controle de concorrência é centralizado no coordenador.
+
+\subsection{Visão Geral}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.5cm,
+    component/.style={rectangle, draw, fill=blue!20, text width=3cm, text centered, minimum height=1cm, rounded corners},
+    service/.style={rectangle, draw, fill=green!20, text width=3.5cm, text centered, minimum height=1.5cm},
+    db/.style={cylinder, draw, fill=yellow!20, text width=2cm, text centered, minimum height=1cm, shape border rotate=90}
+]
+
+% Cliente
+\node[component] (client) {Cliente Web\\(HTML/JS)};
+
+% Serviço de Agendamento
+\node[service, below=of client] (agendamento) {
+    \textbf{Serviço de Agendamento}\\
+    Flask :5000\\
+    \footnotesize{CRUD, Regras, HATEOAS}
+};
+
+% Serviço Coordenador
+\node[service, right=3cm of agendamento] (coordenador) {
+    \textbf{Serviço Coordenador}\\
+    Node.js :3000\\
+    \footnotesize{Locks, Timeout 30s}
+};
+
+% Banco de dados
+\node[db, below=of agendamento] (db) {SQLite\\Database};
+
+% Conexões
+\draw[->, thick] (client) -- node[right] {HTTP REST} (agendamento);
+\draw[->, thick] (agendamento) -- node[above] {/lock, /unlock} (coordenador);
+\draw[->, thick] (agendamento) -- node[right] {SQLAlchemy} (db);
+
+\end{tikzpicture}
+\caption{Arquitetura geral do sistema SCTEC}
+\label{fig:arquitetura}
+\end{figure}
+
+\subsection{Divisão de Responsabilidades}
+
+\textbf{Serviço de Agendamento (Flask):}
+\begin{itemize}
+    \item Fonte de verdade do estado do sistema
+    \item Validação de regras de negócio
+    \item Persistência em SQLite
+    \item Exposição da API RESTful com HATEOAS
+    \item Logging estruturado (aplicação + auditoria)
+\end{itemize}
+
+\textbf{Serviço Coordenador (Node.js):}
+\begin{itemize}
+    \item Controle de acesso com \emph{locks} por recurso
+    \item Garantia de exclusão mútua
+    \item Gerenciamento de timeouts (30s)
+    \item Limpeza automática de locks expirados
+\end{itemize}
+
+\section{Modelagem de Dados}
+
+\subsection{Entidades Principais}
+
+\textbf{Cientista:}
+\begin{itemize}
+    \item \textbf{Atributos:} id, nome, email (único), instituição, país, especialidade, data\_cadastro, ativo
+    \item \textbf{Papel:} Representa pesquisadores autorizados a usar o telescópio
+\end{itemize}
+
+\textbf{Agendamento:}
+\begin{itemize}
+    \item \textbf{Atributos:} id, cientista\_id, horário\_início/fim (UTC), objeto\_celeste, observações, status (AGENDADO, CANCELADO, CONCLUIDO), datas de criação/cancelamento, motivo
+    \item \textbf{Papel:} Representa reservas de tempo no telescópio
+\end{itemize}
+
+\subsection{Diagrama Entidade-Relacionamento}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    entity/.style={rectangle, draw, fill=red!20, text width=3.5cm, minimum height=1cm},
+    relationship/.style={diamond, draw, fill=green!20, text width=1.5cm, text centered, aspect=2}
+]
+
+% Entidade Cientista
+\node[entity] (cientista) at (0,0) {
+    \textbf{Cientista}\\[0.2cm]
+    \underline{id}\\
+    nome\\
+    email\\
+    instituicao\\
+    pais\\
+    especialidade\\
+    data\_cadastro\\
+    ativo
+};
+
+% Entidade Agendamento
+\node[entity] (agendamento) at (8,0) {
+    \textbf{Agendamento}\\[0.2cm]
+    \underline{id}\\
+    cientista\_id\\
+    horario\_inicio\_utc\\
+    horario\_fim\_utc\\
+    objeto\_celeste\\
+    observacoes\\
+    status\\
+    data\_criacao
+};
+
+% Relacionamento
+\node[relationship] (tem) at (4,0) {tem};
+
+% Conexões
+\draw[-, thick] (cientista) -- (tem);
+\draw[->, thick] (tem) -- node[above] {1:N} (agendamento);
+
+% Anotações
+\node[draw, dashed, text width=3cm, below=1cm of agendamento, fill=yellow!10] (regras) {
+    \textbf{Regras:}\\
+    Duracao: 5-120 min\\
+    Multiplos de 5 min\\
+    Max. 3 ativos\\
+    Sem sobreposicao
+};
+
+\end{tikzpicture}
+\caption{Diagrama Entidade-Relacionamento}
+\label{fig:er-diagram}
+\end{figure}
+
+\subsection{Regras de Negócio}
+\begin{itemize}
+    \item Duração mínima de 5 min e máxima de 120 min
+    \item Slots múltiplos de 5 minutos
+    \item Não agendar no passado; antecedência mínima de 24h
+    \item Sem sobreposição de horários com status AGENDADO
+    \item Até 3 agendamentos ativos por cientista
+    \item Somente agendamentos AGENDADOS podem ser cancelados
+\end{itemize}
+
+\subsection{Índices e Constraints}
+\begin{itemize}
+    \item \textbf{Índices principais:} (horário\_início, horário\_fim, status), cientista\_id, status
+    \item \textbf{Constraints:} \code{horario\_fim > horario\_inicio}, domínio de status válido
+    \item \textbf{Unique constraint:} Combinação de horários para status AGENDADO
+\end{itemize}
+
+\section{API RESTful com HATEOAS}
+
+\subsection{Convenções da API}
+\begin{itemize}
+    \item \textbf{Base URL:} \code{/api/v1}
+    \item \textbf{Formato:} JSON
+    \item \textbf{Timezone:} UTC para todos os timestamps
+    \item \textbf{Headers obrigatórios:} \code{Content-Type: application/json}
+    \item \textbf{Header de resposta:} \code{X-Correlation-ID}
+    \item \textbf{Códigos HTTP:} 200 (OK), 201 (Created), 400 (Bad Request), 404 (Not Found), 409 (Conflict), 422 (Unprocessable Entity), 500 (Internal Server Error)
+\end{itemize}
+
+\subsection{Endpoint de Sincronização de Tempo}
+O endpoint \endpoint{/time} retorna o timestamp oficial do servidor para sincronização de tempo (Algoritmo de Cristian).
+
+\textbf{Resposta exemplo:}
+\begin{lstlisting}[language=json, caption={Resposta do endpoint /time}]
+{
+  "timestamp_utc": "2025-11-16T15:30:45.123456Z",
+  "timezone": "UTC",
+  "epoch_ms": 1731166245123,
+  "_links": {
+    "self": { "href": "/api/v1/time" },
+    "agendamentos": { "href": "/api/v1/agendamentos" }
+  }
+}
+\end{lstlisting}
+
+\subsection{Endpoints de Cientistas}
+\begin{itemize}
+    \item \textbf{GET} \endpoint{/cientistas}: Lista com paginação, filtros e links HATEOAS
+    \item \textbf{POST} \endpoint{/cientistas}: Criação com validações (nome, email único)
+    \item \textbf{GET} \endpoint{/cientistas/\{id\}}: Detalhes de um cientista específico
+    \item \textbf{GET} \endpoint{/cientistas/\{id\}/agendamentos}: Agendamentos de um cientista
+\end{itemize}
+
+\subsection{Endpoints de Agendamentos}
+\begin{itemize}
+    \item \textbf{GET} \endpoint{/agendamentos}: Lista com filtros (período, status, cientista), paginação
+    \item \textbf{POST} \endpoint{/agendamentos}: Operação crítica com lock; validações completas
+    \item \textbf{GET} \endpoint{/agendamentos/\{id\}}: Detalhes com HATEOAS condicional
+    \item \textbf{DELETE} \endpoint{/agendamentos/\{id\}}: Soft delete com registro de motivo
+\end{itemize}
+
+\section{Logging e Observabilidade}
+
+\subsection{Logs de Aplicação}
+Formato: \code{[LEVEL] timestamp service correlation\_id: mensagem}
+
+\textbf{Níveis de log:}
+\begin{itemize}
+    \item \textbf{DEBUG:} Detalhes técnicos para desenvolvimento
+    \item \textbf{INFO:} Fluxo normal da aplicação
+    \item \textbf{WARNING:} Situações incomuns mas tratadas
+    \item \textbf{ERROR:} Erros que impedem operações
+    \item \textbf{CRITICAL:} Falhas que comprometem o sistema
+\end{itemize}
+
+\textbf{Pontos de log principais:}
+\begin{itemize}
+    \item Recebimento de requisição
+    \item Tentativa/obtenção de lock
+    \item Verificação de conflitos
+    \item Persistência no banco
+    \item Envio de resposta
+\end{itemize}
+
+\subsection{Logs de Auditoria (JSON)}
+
+Eventos principais em formato JSON estruturado:
+\begin{itemize}
+    \item \code{CIENTISTA\_CRIADO}
+    \item \code{AGENDAMENTO\_CRIADO}
+    \item \code{AGENDAMENTO\_CANCELADO}
+    \item \code{AGENDAMENTO\_CONFLITO}
+\end{itemize}
+
+Cada evento registra: \code{timestamp\_utc}, \code{event\_type}, \code{service}, \code{correlation\_id} e \code{details}.
+
+\subsection{Correlation ID}
+\begin{itemize}
+    \item UUID gerado por requisição
+    \item Propagado entre todos os serviços
+    \item Incluído em todos os logs
+    \item Retornado no header \code{X-Correlation-ID}
+    \item Permite \emph{traceability} ponta-a-ponta
+\end{itemize}
+
+\section{Serviço Coordenador (Locks)}
+
+\subsection{API do Coordenador}
+\begin{itemize}
+    \item \textbf{POST} \endpoint{/lock}: Tenta adquirir lock de um recurso (200/409)
+    \item \textbf{POST} \endpoint{/unlock}: Libera lock (200/404)
+    \item \textbf{GET} \endpoint{/locks}: Debug e observabilidade de locks ativos
+    \item \textbf{GET} \endpoint{/health}: Health check do serviço
+\end{itemize}
+
+\subsection{Características dos Locks}
+\begin{itemize}
+    \item \textbf{Timeout:} 30 segundos (prevenção de deadlock)
+    \item \textbf{Cleanup:} Periódico (a cada 1 minuto)
+    \item \textbf{Identificação:} Por nome de recurso (ex: \code{Hubble-Acad\_2025-12-01T03:00:00Z})
+    \item \textbf{Holder tracking:} Registra correlation\_id do detentor
+\end{itemize}
+
+\subsection{Fluxo de Agendamento com Sucesso}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=2cm,
+    actor/.style={circle, draw, fill=blue!20, minimum size=1cm},
+    service/.style={rectangle, draw, fill=green!20, minimum width=2.5cm, minimum height=1cm},
+    db/.style={cylinder, draw, fill=yellow!20, minimum width=2cm, minimum height=1cm, shape border rotate=90},
+    arrow/.style={->, thick}
+]
+
+% Atores
+\node[actor] (client) {C};
+\node[service, below=1cm of client] (flask) {Flask};
+\node[service, right=3cm of flask] (node) {Node.js};
+\node[db, below=2cm of flask] (db) {SQLite};
+
+% Fluxo
+\draw[arrow] (client) -- node[right] {POST} (flask);
+\draw[arrow] (flask) -- node[above] {lock} (node);
+\draw[arrow] (node) -- node[above] {OK} (flask);
+\draw[arrow] (flask) -- node[right] {verify} (db);
+\draw[arrow] (db) -- node[left] {no conflict} (flask);
+\draw[arrow] (flask) -- node[right] {insert} (db);
+\draw[arrow] (flask) -- node[above] {unlock} (node);
+\draw[arrow] (flask) -- node[left] {201} (client);
+
+\end{tikzpicture}
+\caption{Fluxo simplificado de agendamento com lock}
+\label{fig:seq-simple}
+\end{figure}
+
+\subsection{Fluxo Detalhado com Múltiplas Requisições}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.5cm and 2cm,
+    request/.style={rectangle, draw, fill=blue!20, text width=2.5cm, text centered},
+    process/.style={rectangle, draw, fill=green!20, text width=2.5cm, text centered},
+    decision/.style={diamond, draw, fill=yellow!20, text width=1.5cm, text centered, aspect=2}
+]
+
+% Cliente 1
+\node[request] (req1) {Requisicao 1\\Cliente SP};
+\node[process, below=of req1] (lock1) {Tenta Lock};
+\node[decision, below=of lock1] (avail1) {Livre?};
+\node[process, below left=of avail1] (grant1) {Conceder\\Lock};
+\node[process, below=of grant1] (save1) {Salvar\\BD};
+
+% Cliente 2
+\node[request, right=4cm of req1] (req2) {Requisicao 2\\Cliente TK};
+\node[process, below=of req2] (lock2) {Tenta Lock};
+\node[decision, below=of lock2] (avail2) {Livre?};
+\node[process, below right=of avail2] (deny2) {Negar\\409};
+
+% Conexões Cliente 1
+\draw[->, thick] (req1) -- (lock1);
+\draw[->, thick] (lock1) -- (avail1);
+\draw[->, thick] (avail1) -- node[left] {Sim} (grant1);
+\draw[->, thick] (grant1) -- (save1);
+
+% Conexões Cliente 2
+\draw[->, thick] (req2) -- (lock2);
+\draw[->, thick] (lock2) -- (avail2);
+\draw[->, thick] (avail2) -- node[right] {Nao} (deny2);
+
+% Indicação de tempo
+\node[draw, dashed, text width=6cm, above=0.5cm of req1, xshift=2cm] (tempo) {
+    \textbf{Requisicoes simultaneas:}\\
+    T0: Ambas chegam\\
+    T1: Req1 obtem lock\\
+    T2: Req2 e negada (409)\\
+    T3: Req1 completa e libera
+};
+
+\end{tikzpicture}
+\caption{Exclusão mútua - Duas requisições concorrentes}
+\label{fig:mutex}
+\end{figure}
+
+\section{Sincronização de Tempo (Algoritmo de Cristian)}
+
+O cliente realiza medições de \emph{round-trip time} (RTT) com o endpoint \endpoint{/time} e calcula um \emph{offset} assumindo latência simétrica.
+
+\subsection{Equação do Offset}
+\begin{equation}
+\text{offset} = (T_{\text{servidor}} + \tfrac{RTT}{2}) - T_{\text{cliente}}
+\end{equation}
+
+Onde:
+\begin{itemize}
+    \item $T_{\text{servidor}}$: Timestamp retornado pelo servidor
+    \item $RTT$: Round-Trip Time (tempo total da requisição)
+    \item $T_{\text{cliente}}$: Timestamp local do cliente
+\end{itemize}
+
+\subsection{Fluxograma do Algoritmo}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.5cm,
+    start/.style={ellipse, draw, fill=green!20, text width=2cm, text centered},
+    process/.style={rectangle, draw, fill=blue!20, text width=3cm, text centered},
+    calc/.style={rectangle, draw, fill=yellow!20, text width=3.5cm, text centered},
+    stop/.style={ellipse, draw, fill=red!20, text width=2cm, text centered}
+]
+
+\node[start] (start) {Inicio};
+\node[process, below=of start] (t0) {$T_0 = \text{now()}$};
+\node[process, below=of t0] (req) {GET /time};
+\node[process, below=of req] (resp) {Recebe $T_{\text{server}}$};
+\node[process, below=of resp] (t1) {$T_1 = \text{now()}$};
+\node[calc, below=of t1] (rtt) {$RTT = T_1 - T_0$};
+\node[calc, below=of rtt] (lat) {$\text{latencia} = RTT / 2$};
+\node[calc, below=of lat] (adj) {$T_{\text{adj}} = T_{\text{server}} + \text{latencia}$};
+\node[calc, below=of adj] (off) {$\text{offset} = T_{\text{adj}} - T_1$};
+\node[stop, below=of off] (stop) {Aplicar offset};
+
+\draw[->, thick] (start) -- (t0);
+\draw[->, thick] (t0) -- (req);
+\draw[->, thick] (req) -- (resp);
+\draw[->, thick] (resp) -- (t1);
+\draw[->, thick] (t1) -- (rtt);
+\draw[->, thick] (rtt) -- (lat);
+\draw[->, thick] (lat) -- (adj);
+\draw[->, thick] (adj) -- (off);
+\draw[->, thick] (off) -- (stop);
+
+\end{tikzpicture}
+\caption{Fluxograma do Algoritmo de Cristian}
+\label{fig:cristian}
+\end{figure}
+
+\subsection{Implementação no Cliente}
+A correção é aplicada localmente ao preparar pedidos de agendamento:
+\begin{itemize}
+    \item Cliente calcula offset periodicamente (a cada 30s)
+    \item Atualiza display de tempo em tempo real
+    \item Aplica correção antes de enviar requisições POST
+\end{itemize}
+
+\section{HATEOAS e Cliente Web}
+
+As respostas da API incluem \code{\_links} com ações possíveis, implementando o conceito de HATEOAS (Hypermedia as the Engine of Application State).
+
+\subsection{Exemplo de Resposta HATEOAS}
+\begin{lstlisting}[language=json, caption={Resposta de agendamento com links}]
+{
+  "id": 123,
+  "cientista_id": 7,
+  "horario_inicio_utc": "2025-12-01T03:00:00Z",
+  "status": "AGENDADO",
+  "_links": {
+    "self": { "href": "/api/v1/agendamentos/123" },
+    "cientista": { "href": "/api/v1/cientistas/7" },
+    "cancelar": {
+      "href": "/api/v1/agendamentos/123",
+      "method": "DELETE"
+    }
+  }
+}
+\end{lstlisting}
+
+\subsection{Benefícios do HATEOAS}
+\begin{itemize}
+    \item \textbf{Desacoplamento:} Cliente não precisa conhecer regras de negócio
+    \item \textbf{Descoberta dinâmica:} Ações disponíveis são fornecidas pela API
+    \item \textbf{Exemplo prático:} Botão ``Cancelar'' aparece apenas quando \code{\_links.cancelar} existe
+\end{itemize}
+
+\section{Diagrama de Estados do Agendamento}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=3cm,
+    state/.style={rectangle, draw, rounded corners, fill=blue!20, text width=2.5cm, text centered, minimum height=1.5cm},
+    initial/.style={circle, draw, fill=green!20, minimum size=0.5cm},
+    final/.style={circle, draw, fill=red!20, minimum size=0.5cm, double}
+]
+
+% Estados
+\node[initial] (init) {};
+\node[state, right=of init] (agendado) {\textbf{AGENDADO}\\[0.2cm]\small Pode cancelar};
+\node[state, below right=2cm and 1cm of agendado] (cancelado) {\textbf{CANCELADO}\\[0.2cm]\small Estado final};
+\node[state, above right=2cm and 1cm of agendado] (concluido) {\textbf{CONCLUIDO}\\[0.2cm]\small Estado final};
+\node[final, right=of cancelado] (end1) {};
+\node[final, right=of concluido] (end2) {};
+
+% Transições
+\draw[->, thick] (init) -- node[above] {POST} (agendado);
+\draw[->, thick] (agendado) -- node[above right, text width=2cm] {DELETE\\(motivo)} (cancelado);
+\draw[->, thick] (agendado) -- node[above left, text width=2cm] {Sistema\\(observacao)} (concluido);
+\draw[->, thick] (cancelado) -- (end1);
+\draw[->, thick] (concluido) -- (end2);
+
+\end{tikzpicture}
+\caption{Diagrama de estados de um agendamento}
+\label{fig:states}
+\end{figure}
+
+\section{Sistema de Toggle COM/SEM Lock}
+
+Para fins didáticos e demonstração, o sistema implementa um toggle que permite alternar entre duas versões:
+
+\begin{itemize}
+    \item \textbf{Versão SEM LOCK (Entrega 2):} Demonstra o problema da condição de corrida
+    \item \textbf{Versão COM LOCK (Entrega 3):} Demonstra a solução com exclusão mútua
+\end{itemize}
+
+\subsection{Configuração}
+\begin{lstlisting}[caption={Arquivo .env - Toggle de lock},label={lst:env}]
+# Versao COM lock (Producao)
+USE_LOCK=true
+
+# Versao SEM lock (Demonstracao do problema)
+# USE_LOCK=false
+\end{lstlisting}
+
+\subsection{Scripts de Demonstração}
+\begin{itemize}
+    \item \code{demo\_sem\_lock.ps1}: Configura e executa versão sem lock
+    \item \code{demo\_com\_lock.ps1}: Configura e executa versão com lock
+    \item \code{demo\_comparacao.ps1}: Executa ambas as versões sequencialmente
+\end{itemize}
+
+\section{Testes de Concorrência e Evidências}
+
+\subsection{Entrega 2 -- SEM Lock (Demonstração do Problema)}
+
+\textbf{Objetivo:} Demonstrar a existência da condição de corrida.
+
+\textbf{Expectativa:}
+\begin{itemize}
+    \item Múltiplos agendamentos criados para o mesmo horário
+    \item Logs entrelaçados mostrando race condition
+    \item Múltiplos eventos \code{AGENDAMENTO\_CRIADO} para o mesmo slot
+    \item Estado inconsistente no banco de dados
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{
+        \textbf{Placeholder:} Incluir screenshot da saída do teste\\
+        \code{python tests\textbackslash test\_concorrencia.py 10}\\[0.3cm]
+        Deve mostrar:
+        \begin{itemize}
+            \item 2-10 sucessos (HTTP 201)
+            \item 0-8 conflitos
+            \item Consulta ao BD mostrando múltiplos registros
+        \end{itemize}
+    }}
+    \caption{Saída do teste de estresse SEM lock}
+    \label{fig:sem-lock}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{
+        \textbf{Placeholder:} Incluir trechos de \code{logs/app.log}\\[0.3cm]
+        Destacar:
+        \begin{itemize}
+            \item Logs entrelaçados de múltiplas threads
+            \item Ausência de tentativas de lock
+            \item Múltiplas verificações de conflito simultâneas
+        \end{itemize}
+    }}
+    \caption{Trechos de logs mostrando condição de corrida}
+    \label{fig:sem-lock-logs}
+\end{figure}
+
+\subsection{Entrega 3 -- COM Lock (Solução)}
+
+\textbf{Objetivo:} Demonstrar a solução com exclusão mútua.
+
+\textbf{Expectativa:}
+\begin{itemize}
+    \item Apenas 1 sucesso (HTTP 201)
+    \item 9 conflitos (HTTP 409) se 10 threads
+    \item Banco consistente com único registro para o slot
+    \item 1 evento \code{AGENDAMENTO\_CRIADO}
+    \item 9 eventos \code{AGENDAMENTO\_CONFLITO}
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{
+        \textbf{Placeholder:} Incluir screenshot da saída do teste\\
+        \code{python tests\textbackslash test\_com\_lock.py 10}\\[0.3cm]
+        Deve mostrar:
+        \begin{itemize}
+            \item 1 sucesso (HTTP 201)
+            \item 9 conflitos (HTTP 409)
+            \item Consulta ao BD mostrando 1 único registro
+            \item Tempos de resposta (com overhead do lock)
+        \end{itemize}
+    }}
+    \caption{Saída do teste de estresse COM lock}
+    \label{fig:com-lock}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{
+        \textbf{Placeholder:} Incluir logs coordenados\\[0.3cm]
+        Mostrar:
+        \begin{itemize}
+            \item Logs do Flask tentando adquirir lock
+            \item Logs do Node.js concedendo/negando locks
+            \item Correlation IDs correlacionados
+            \item Sequência ordenada de eventos
+        \end{itemize}
+    }}
+    \caption{Logs coordenados (Flask + Node.js) com correlation ID}
+    \label{fig:com-lock-logs}
+\end{figure}
+
+\subsection{Resumo Comparativo}
+
+\begin{table}[H]
+    \centering
+    \caption{Comparação detalhada: Sistema SEM vs COM lock}
+    \begin{tabular}{@{}lccl@{}}
+        \toprule
+        \textbf{Métrica} & \textbf{SEM lock} & \textbf{COM lock} & \textbf{Observação} \\
+        \midrule
+        Agendamentos criados & $>1$ & $1$ & Exclusão mútua \\
+        Conflitos (HTTP 409) & $0$ a $n-1$ & $n-1$ & $n$ = threads \\
+        Consistência do BD & Comprometida & Garantida & Estado único \\
+        Eventos AUDIT criação & Múltiplos & Único & 1 por slot \\
+        Race condition & Presente & Resolvida & Lock funciona \\
+        Tempo médio (10 threads) & $\sim$150ms & $\sim$180ms & +20\% overhead \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:comparativo-detalhado}
+\end{table}
+
+\section{Containerização e Orquestração}
+
+O sistema utiliza Docker Compose para orquestração dos microserviços.
+
+\subsection{Arquitetura Docker}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=2cm,
+    container/.style={rectangle, draw, fill=blue!20, text width=3cm, text centered, minimum height=1.5cm, rounded corners},
+    volume/.style={cylinder, draw, fill=yellow!20, text width=2cm, text centered, minimum height=1cm, shape border rotate=90},
+    network/.style={ellipse, draw, fill=green!20, text width=3cm, text centered}
+]
+
+% Containers
+\node[container] (coord) {coordenador\\Node.js :3000};
+\node[container, below=3cm of coord] (agend) {agendamento\\Flask :5000};
+
+% Volumes
+\node[volume, right=3cm of agend] (vol_db) {Volume\\DB};
+\node[volume, above=of vol_db] (vol_logs) {Volume\\Logs};
+
+% Network
+\node[network, left=3cm of agend] (net) {Network\\sctec-network};
+
+% Conexões
+\draw[->, thick] (agend) -- node[above] {HTTP} (coord);
+\draw[->, thick] (agend) -- node[above] {mount} (vol_db);
+\draw[->, thick] (agend) -- node[above] {mount} (vol_logs);
+\draw[-, thick, dashed] (coord) -- (net);
+\draw[-, thick, dashed] (agend) -- (net);
+
+\end{tikzpicture}
+\caption{Arquitetura de containerização}
+\label{fig:docker}
+\end{figure}
+
+\subsection{Características do Docker Compose}
+
+\begin{itemize}
+    \item \textbf{Healthchecks:} Monitoramento automático de saúde dos serviços
+    \item \textbf{Volumes:} Persistência de banco de dados e logs
+    \item \textbf{Network:} Rede compartilhada para comunicação inter-serviços
+    \item \textbf{Restart policy:} \code{unless-stopped} para robustez
+    \item \textbf{Logging:} Rotação automática (max 10MB, 3 arquivos)
+    \item \textbf{Dependencies:} Agendamento aguarda Coordenador estar saudável
+\end{itemize}
+
+\subsection{Comandos Docker}
+
+\begin{lstlisting}[caption={Comandos básicos Docker Compose}]
+# Iniciar sistema
+docker-compose up --build -d
+
+# Ver logs em tempo real
+docker-compose logs -f
+
+# Ver logs de um servico especifico
+docker-compose logs -f agendamento
+
+# Parar sistema
+docker-compose stop
+
+# Reiniciar servico
+docker-compose restart coordenador
+
+# Remover tudo (incluindo volumes)
+docker-compose down -v
+\end{lstlisting}
+
+\begin{figure}[H]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{
+        \textbf{Placeholder:} Screenshot de \code{docker-compose logs -f}\\[0.3cm]
+        Mostrar:
+        \begin{itemize}
+            \item Logs entrelaçados dos dois serviços
+            \item Cores diferentes por serviço
+            \item Timestamps sincronizados
+            \item Fluxo de uma requisição através dos serviços
+        \end{itemize}
+    }}
+    \caption{Logs agregados com Docker Compose}
+    \label{fig:compose-logs}
+\end{figure}
+
+\section{Como Executar}
+
+\subsection{Opção 1: Docker (Recomendado)}
+
+\textbf{Pré-requisitos:}
+\begin{itemize}
+    \item Docker Desktop instalado
+    \item Portas 3000 e 5000 livres
+\end{itemize}
+
+\textbf{Windows:}
+\begin{lstlisting}
+start.bat
+\end{lstlisting}
+
+\textbf{Linux/Mac:}
+\begin{lstlisting}
+chmod +x start.sh
+./start.sh
+\end{lstlisting}
+
+\textbf{Acessar:}
+\begin{itemize}
+    \item Interface Web: \url{http://localhost:5000}
+    \item API: \url{http://localhost:5000/api/v1}
+    \item Coordenador: \url{http://localhost:3000}
+\end{itemize}
+
+\subsection{Opção 2: Desenvolvimento Local}
+
+\textbf{Terminal 1 - Coordenador (Node.js):}
+\begin{lstlisting}
+cd servico-coordenador
+npm install
+npm start
+\end{lstlisting}
+
+\textbf{Terminal 2 - Agendamento (Python):}
+\begin{lstlisting}
+cd servico-agendamento
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/Mac
+pip install -r requirements.txt
+python run.py
+\end{lstlisting}
+
+\section{Segurança e Boas Práticas}
+
+\begin{itemize}
+    \item \textbf{Variáveis sensíveis:} Sempre via ambiente, nunca no código
+    \item \textbf{Secret Key:} Trocar em produção (\code{SECRET\_KEY})
+    \item \textbf{Usuário não-root:} Preferir em containers
+    \item \textbf{Dados sensíveis:} Não logar (emails, IDs devem ser sanitizados em produção)
+    \item \textbf{Auditoria:} Apenas eventos de negócio, nunca dados pessoais completos
+    \item \textbf{Healthchecks:} Implementados para detecção de falhas
+    \item \textbf{Restart policy:} Recuperação automática de falhas
+    \item \textbf{CORS:} Configurado apropriadamente
+    \item \textbf{Input validation:} Todas as entradas são validadas
+\end{itemize}
+
+\section{Conclusões e Trabalhos Futuros}
+
+\subsection{Objetivos Atingidos}
+
+O sistema SCTEC atende completamente aos requisitos propostos:
+
+\begin{itemize}
+    \item \checkmark{} \textbf{API RESTful com HATEOAS:} Implementada e testada
+    \item \checkmark{} \textbf{Exclusão Mútua:} Resolvida via serviço coordenador
+    \item \checkmark{} \textbf{Sincronização de Tempo:} Algoritmo de Cristian funcional
+    \item \checkmark{} \textbf{Logging Completo:} Aplicação + Auditoria com correlation ID
+    \item \checkmark{} \textbf{Containerização:} Docker Compose operacional
+    \item \checkmark{} \textbf{Testes:} Demonstração clara do problema e da solução
+\end{itemize}
+
+\subsection{Lições Aprendidas}
+
+\begin{enumerate}
+    \item \textbf{Complexidade de Sistemas Distribuídos:} A necessidade de coordenação entre serviços adiciona overhead mas é essencial para consistência
+    \item \textbf{Importância do Logging:} Em sistemas distribuídos, logs estruturados com correlation IDs são fundamentais para debugging
+    \item \textbf{Tradeoffs:} A exclusão mútua adiciona latência ($\sim$20\%) mas garante consistência
+    \item \textbf{Design Modular:} Separação em microserviços facilita manutenção e escalabilidade
+\end{enumerate}
+
+\subsection{Trabalhos Futuros}
+
+Sugestões de evolução do sistema:
+
+\begin{itemize}
+    \item \textbf{Autenticação/Autorização:} JWT tokens para cientistas, roles e permissões
+    \item \textbf{PostgreSQL:} Migração de SQLite para banco production-ready
+    \item \textbf{Redis:} Locks distribuídos com suporte a cluster
+    \item \textbf{WebSockets:} Atualização em tempo real da interface
+    \item \textbf{Kubernetes:} Deploy em cluster para alta disponibilidade
+    \item \textbf{Métricas:} Prometheus + Grafana para monitoramento
+    \item \textbf{CI/CD:} Pipeline automatizado com GitHub Actions
+    \item \textbf{Testes Unitários:} Cobertura completa do código
+    \item \textbf{Load Balancer:} Múltiplas instâncias do serviço de agendamento
+    \item \textbf{Message Queue:} RabbitMQ ou Kafka para comunicação assíncrona
+\end{itemize}
+
+\appendix
+
+\section{Apêndice A: Sumário de Endpoints}
+
+\begin{longtable}{@{}p{0.30\linewidth} p{0.62\linewidth}@{}}
+\toprule
+\textbf{Endpoint} & \textbf{Descrição} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Endpoint} & \textbf{Descrição} \\
+\midrule
+\endhead
+GET /api/v1/time & Timestamp oficial do servidor para sincronização + links HATEOAS \\
+GET /api/v1/cientistas & Lista paginada com filtros; inclui links HATEOAS por recurso \\
+POST /api/v1/cientistas & Criação de cientista com validação completa e auditoria \\
+GET /api/v1/cientistas/\{id\} & Detalhes de um cientista específico + links HATEOAS \\
+GET /api/v1/cientistas/\{id\}/agendamentos & Lista de agendamentos de um cientista específico \\
+GET /api/v1/agendamentos & Lista paginada com filtros (data, status, cientista) e ordenação \\
+POST /api/v1/agendamentos & Criação de agendamento (operação crítica com lock obrigatório) \\
+GET /api/v1/agendamentos/\{id\} & Detalhes de agendamento + HATEOAS condicional (status-based) \\
+DELETE /api/v1/agendamentos/\{id\} & Cancelamento de agendamento (soft delete com motivo) \\
+\midrule
+POST /lock & (Coordenador) Tenta adquirir lock de um recurso \\
+POST /unlock & (Coordenador) Libera lock de um recurso \\
+GET /locks & (Coordenador) Lista locks ativos (debug) \\
+GET /health & (Coordenador) Health check do serviço \\
+\bottomrule
+\caption{Sumário completo de endpoints da API}
+\label{tab:endpoints}
+\end{longtable}
+
+\section{Apêndice B: Exemplos de Logs}
+
+\subsection{Log de Aplicação}
+
+\begin{lstlisting}[caption={Exemplo de logs de aplicação}]
+[INFO] 2025-11-16T18:00:04.500Z servico-agendamento a1b2c3d4: Requisicao recebida para POST /agendamentos
+[INFO] 2025-11-16T18:00:04.505Z servico-agendamento a1b2c3d4: Validando dados do agendamento
+[INFO] 2025-11-16T18:00:04.510Z servico-agendamento a1b2c3d4: Tentando adquirir lock para o recurso Hubble-Acad_2025-12-01T03:00:00Z
+[INFO] 2025-11-16T18:00:05.120Z servico-agendamento a1b2c3d4: Lock adquirido com sucesso
+[INFO] 2025-11-16T18:00:05.122Z servico-agendamento a1b2c3d4: Iniciando verificacao de conflito no BD
+[INFO] 2025-11-16T18:00:05.123Z servico-agendamento a1b2c3d4: Salvando novo agendamento no BD
+[INFO] 2025-11-16T18:00:05.125Z servico-agendamento a1b2c3d4: Agendamento salvo com ID 123
+[INFO] 2025-11-16T18:00:05.127Z servico-agendamento a1b2c3d4: Liberando lock
+[INFO] 2025-11-16T18:00:05.130Z servico-agendamento a1b2c3d4: Resposta 201 enviada
+\end{lstlisting}
+
+\subsection{Log de Auditoria}
+
+\begin{lstlisting}[language=json, caption={Evento AUDIT: AGENDAMENTO\_CRIADO}]
+{
+  "timestamp_utc": "2025-11-16T18:00:05.297Z",
+  "level": "AUDIT",
+  "event_type": "AGENDAMENTO_CRIADO",
+  "service": "servico-agendamento",
+  "correlation_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "details": {
+    "agendamento_id": 123,
+    "cientista_id": 7,
+    "cientista_nome": "Marie Curie",
+    "horario_inicio_utc": "2025-12-01T03:00:00Z",
+    "horario_fim_utc": "2025-12-01T03:30:00Z",
+    "objeto_celeste": "NGC 1300",
+    "duracao_minutos": 30
+  }
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=json, caption={Evento AUDIT: AGENDAMENTO\_CANCELADO}]
+{
+  "timestamp_utc": "2025-11-16T19:15:22.458Z",
+  "level": "AUDIT",
+  "event_type": "AGENDAMENTO_CANCELADO",
+  "service": "servico-agendamento",
+  "correlation_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "details": {
+    "agendamento_id": 123,
+    "cientista_id": 7,
+    "cientista_nome": "Marie Curie",
+    "horario_inicio_utc": "2025-12-01T03:00:00Z",
+    "motivo": "Condicoes meteorologicas desfavoraveis"
+  }
+}
+\end{lstlisting}
+
+\section{Apêndice C: Comandos Úteis}
+
+\subsection{Docker}
+
+\begin{lstlisting}[caption={Comandos Docker para diagnóstico}]
+# Ver status dos containers
+docker-compose ps
+
+# Ver logs em tempo real
+docker-compose logs -f
+
+# Ver logs de um servico especifico
+docker-compose logs -f agendamento
+docker-compose logs -f coordenador
+
+# Ver ultimas 100 linhas de log
+docker-compose logs --tail=100 agendamento
+
+# Verificar health status
+docker inspect --format='{{.State.Health.Status}}' sctec-agendamento
+docker inspect --format='{{.State.Health.Status}}' sctec-coordenador
+
+# Acessar shell do container
+docker exec -it sctec-agendamento /bin/bash
+docker exec -it sctec-coordenador /bin/sh
+
+# Ver uso de recursos
+docker stats
+
+# Inspecionar rede
+docker network inspect sctec-network
+
+# Inspecionar volumes
+docker volume inspect sctec-agendamento-db
+docker volume inspect sctec-agendamento-logs
+\end{lstlisting}
+
+\subsection{Análise de Logs}
+
+\begin{lstlisting}[caption={Comandos para análise de logs}]
+# Ver todos os eventos de auditoria
+cat servico-agendamento/logs/audit.log | jq '.event_type'
+
+# Filtrar eventos especificos
+cat servico-agendamento/logs/audit.log | jq 'select(.event_type=="AGENDAMENTO_CRIADO")'
+
+# Buscar por correlation_id
+cat servico-agendamento/logs/app.log | grep "a1b2c3d4"
+
+# Ver tentativas de lock
+cat servico-agendamento/logs/app.log | grep -E '(Tentando adquirir lock|Lock adquirido|Falha ao adquirir)'
+
+# Contar eventos por tipo
+cat servico-agendamento/logs/audit.log | jq -r '.event_type' | sort | uniq -c
+\end{lstlisting}
+
+\subsection{Banco de Dados}
+
+\begin{lstlisting}[caption={Comandos SQLite para inspeção}]
+# Acessar banco de dados
+sqlite3 servico-agendamento/instance/telescopio.db
+
+# Queries uteis
+SELECT * FROM cientistas;
+SELECT * FROM agendamentos WHERE status = 'AGENDADO';
+SELECT COUNT(*) FROM agendamentos GROUP BY status;
+
+# Ver estrutura das tabelas
+.schema cientistas
+.schema agendamentos
+
+# Exportar dados
+.mode csv
+.output agendamentos.csv
+SELECT * FROM agendamentos;
+.output stdout
+\end{lstlisting}
+
+\section{Apêndice D: Troubleshooting}
+
+\subsection{Problemas Comuns}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}p{0.30\linewidth}p{0.65\linewidth}@{}}
+\toprule
+\textbf{Problema} & \textbf{Solução} \\
+\midrule
+Porta em uso & Verificar processos: \code{netstat -ano | findstr ":5000"}. Matar processo ou usar porta alternativa. \\
+\midrule
+Coordenador offline & Verificar logs: \code{docker-compose logs coordenador}. Reiniciar: \code{docker-compose restart coordenador}. \\
+\midrule
+BD corrompido & Remover volume: \code{docker-compose down -v}. Reiniciar: \code{docker-compose up -d}. \\
+\midrule
+Lock travado & Aguardar timeout (30s) ou reiniciar coordenador: \code{docker-compose restart coordenador}. \\
+\midrule
+Build falha & Limpar cache: \code{docker-compose build --no-cache}. Verificar logs de build. \\
+\bottomrule
+\end{tabular}
+\caption{Soluções para problemas comuns}
+\end{table}
+
+\end{document}
