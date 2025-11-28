@@ -4,7 +4,7 @@
 # Script para configurar permissões de execução
 # Execute este script após clonar o repositório
 # ============================================
-
+-
 echo "🔧 Configurando permissões de execução..."
 echo ""
 

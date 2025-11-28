@@ -5,7 +5,7 @@ Deve demonstrar que apenas 1 agendamento é criado
 
 import requests
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import time
 
@@ -104,13 +104,14 @@ def teste_com_lock(num_threads=10):
     print(f"   Cientista criado: ID {cientista_id}\n")
     
     # Definir horário
-    agora = datetime.now(datetime.timezone.utc)
+    agora = datetime.now(timezone.utc)
     inicio = agora + timedelta(hours=25)
     inicio = inicio.replace(minute=(inicio.minute // 5) * 5, second=0, microsecond=0)
     fim = inicio + timedelta(minutes=30)
     
-    horario_inicio_str = inicio.isoformat() + 'Z'
-    horario_fim_str = fim.isoformat() + 'Z'
+    # Formatar sem info de timezone e adicionar Z para UTC
+    horario_inicio_str = inicio.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+    horario_fim_str = fim.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
     
     print(f"2. Horário alvo: {horario_inicio_str} - {horario_fim_str}\n")
     print(f"3. Disparando {num_threads} requisições simultâneas...\n")
